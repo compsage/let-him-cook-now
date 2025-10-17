@@ -1,0 +1,85 @@
+{
+  "name": "let-me-cook",
+  "displayName": "Let Me Cook",
+  "description": "Cooking GIFs with background music for VS Code",
+  "version": "0.4.0",
+  "publisher": "Compsage",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:funnyCookingGifs.gifView"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "funnyCookingGifs.gifView",
+          "name": "🔥🔥🔥",
+          "icon": "$(flame)",
+          "contextualTitle": "🔥🔥🔥"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "funny-cooking-gifs.nextGif",
+        "title": "🔥🔥🔥",
+        "icon": "$(refresh)"
+      }
+    ],
+    "configuration": {
+      "title": "🔥🔥🔥",
+      "properties": {
+        "funnyCookingGifs.commandTitle": {
+          "type": "string",
+          "default": "🔥🔥🔥",
+          "description": "The title for the main cooking GIF command"
+        },
+        "funnyCookingGifs.s3Bucket": {
+          "type": "string",
+          "default": "let-them-cook-now",
+          "description": "S3 bucket name containing GIFs"
+        },
+        "funnyCookingGifs.s3Region": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "AWS region for the S3 bucket"
+        },
+        "funnyCookingGifs.s3Prefix": {
+          "type": "string",
+          "default": "gifs/",
+          "description": "Folder prefix in S3 bucket (e.g., 'gifs/')"
+        },
+        "funnyCookingGifs.s3MusicPrefix": {
+          "type": "string",
+          "default": "songs/",
+          "description": "Folder prefix for music files in S3 bucket (e.g., 'songs/')"
+        },
+        "funnyCookingGifs.displayDuration": {
+          "type": "number",
+          "default": 5,
+          "description": "How long to display each GIF in seconds (when auto-play is enabled)"
+        },
+        "funnyCookingGifs.autoPlay": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically cycle through GIFs"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^16.0.0",
+    "@types/vscode": "^1.60.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
