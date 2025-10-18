@@ -1,9 +1,10 @@
 {
   "name": "let-him-cook-now",
   "displayName": "Let Him Cook Now",
-  "description": "Cooking GIFs with background music for VS Code",
-  "version": "0.6.0",
+  "description": "Perfect for when you need that extra boost while coding",
+  "version": "0.6.1",
   "publisher": "Compsage",
+  "icon": "let-him-cook-logo.png",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -21,7 +22,7 @@
           "type": "webview",
           "id": "funnyCookingGifs.gifView",
           "name": "🔥🔥🔥",
-          "icon": "$(flame)",
+          "icon": "let-him-cook-logo.png",
           "contextualTitle": "🔥🔥🔥"
         }
       ]

@@ -1,6 +1,6 @@
 # Let Him Cook Now 🔥🔥🔥
 
-A VS Code extension that displays cooking GIFs with background music right in your editor. Perfect for taking a break while coding!
+A VS Code extension that displays cooking GIFs with background music right in your editor. Perfect for when you need that extra boost while coding!
 
 ## Features
 
