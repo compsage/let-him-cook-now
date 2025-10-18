@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const https = require('https');
 
 let gifViewProvider = null;
 
@@ -37,63 +38,6 @@ class GifViewProvider {
         this._view = null;
         this._autoRefreshInterval = null;
         this._currentGifData = null;
-        this._likedGifs = this.loadLikedGifs();
-    }
-
-    loadLikedGifs() {
-        const fs = require('fs');
-        const path = require('path');
-        const likedGifsPath = path.join(this._context.globalStorageUri.fsPath, 'liked-gifs.json');
-
-        try {
-            // Ensure directory exists
-            const dir = path.dirname(likedGifsPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-
-            if (fs.existsSync(likedGifsPath)) {
-                const data = fs.readFileSync(likedGifsPath, 'utf8');
-                return JSON.parse(data);
-            }
-        } catch (error) {
-            console.error('Error loading liked GIFs:', error);
-        }
-        return {};
-    }
-
-    saveLikedGifs() {
-        const fs = require('fs');
-        const path = require('path');
-        const likedGifsPath = path.join(this._context.globalStorageUri.fsPath, 'liked-gifs.json');
-
-        try {
-            const dir = path.dirname(likedGifsPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(likedGifsPath, JSON.stringify(this._likedGifs, null, 2), 'utf8');
-        } catch (error) {
-            console.error('Error saving liked GIFs:', error);
-        }
-    }
-
-    toggleLike(gifId, gifUrl, gifTitle) {
-        if (this._likedGifs[gifId]) {
-            delete this._likedGifs[gifId];
-        } else {
-            this._likedGifs[gifId] = {
-                url: gifUrl,
-                title: gifTitle,
-                likedAt: new Date().toISOString()
-            };
-        }
-        this.saveLikedGifs();
-        return !!this._likedGifs[gifId];
-    }
-
-    isLiked(gifId) {
-        return !!this._likedGifs[gifId];
     }
 
     resolveWebviewView(webviewView, context, _token) {
@@ -113,20 +57,6 @@ class GifViewProvider {
                         break;
                     case 'openGiphy':
                         vscode.env.openExternal(vscode.Uri.parse(message.url));
-                        break;
-                    case 'toggleLike':
-                        if (this._currentGifData) {
-                            const isLiked = this.toggleLike(
-                                this._currentGifData.id,
-                                this._currentGifData.images.original.url,
-                                this._currentGifData.title || 'Funny Cooking GIF'
-                            );
-                            // Send updated like status back to webview
-                            webviewView.webview.postMessage({
-                                command: 'likeStatusUpdated',
-                                isLiked: isLiked
-                            });
-                        }
                         break;
                     case 'getRandomMusic':
                         try {
@@ -199,7 +129,6 @@ class GifViewProvider {
 
             if (gifData) {
                 this._currentGifData = gifData;
-                const isLiked = this.isLiked(gifData.id);
 
                 // Send message to update GIF instead of replacing HTML
                 this._view.webview.postMessage({
@@ -207,7 +136,6 @@ class GifViewProvider {
                     gifUrl: gifData.images.original.url,
                     gifId: gifData.id,
                     title: gifData.title || 'Cooking GIF',
-                    isLiked: isLiked,
                     displayDuration: displayDuration,
                     autoPlay: autoPlay
                 });
@@ -227,9 +155,7 @@ class GifViewProvider {
         }
     }
 
-    async fetchRandomGifFromS3(bucket, region, prefix) {
-        const https = require('https');
-
+    async fetchRandomFileFromS3(bucket, region, prefix, fileExtensions, formatResponse = null) {
         return new Promise((resolve, reject) => {
             // List objects in S3 bucket using XML API
             const url = `https://${bucket}.s3.${region}.amazonaws.com/?list-type=2&prefix=${encodeURIComponent(prefix)}`;
@@ -251,30 +177,33 @@ class GifViewProvider {
                             return;
                         }
 
-                        // Extract keys and filter for GIF files
-                        const gifKeys = keyMatches
+                        // Extract keys and filter for specified file extensions
+                        const fileKeys = keyMatches
                             .map(match => match.replace(/<\/?Key>/g, ''))
-                            .filter(key => key.toLowerCase().endsWith('.gif') && key !== prefix);
+                            .filter(key => {
+                                const lowerKey = key.toLowerCase();
+                                return fileExtensions.some(ext => lowerKey.endsWith(ext.toLowerCase())) && key !== prefix;
+                            });
 
-                        if (gifKeys.length === 0) {
+                        if (fileKeys.length === 0) {
                             resolve(null);
                             return;
                         }
 
-                        // Pick a random GIF
-                        const randomKey = gifKeys[Math.floor(Math.random() * gifKeys.length)];
-                        const gifUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
+                        // Pick a random file
+                        const randomKey = fileKeys[Math.floor(Math.random() * fileKeys.length)];
+                        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
 
-                        // Create a GIF data object similar to Giphy format
-                        resolve({
-                            id: randomKey,
-                            title: randomKey.split('/').pop().replace('.gif', ''),
-                            images: {
-                                original: {
-                                    url: gifUrl
-                                }
-                            }
-                        });
+                        // Use custom formatter if provided, otherwise return basic data
+                        if (formatResponse) {
+                            resolve(formatResponse(randomKey, fileUrl));
+                        } else {
+                            resolve({
+                                url: fileUrl,
+                                key: randomKey,
+                                title: randomKey.split('/').pop()
+                            });
+                        }
                     } catch (e) {
                         reject(e);
                     }
@@ -285,56 +214,28 @@ class GifViewProvider {
         });
     }
 
-    async fetchRandomMusicFromS3(bucket, region, prefix) {
-        const https = require('https');
-
-        return new Promise((resolve, reject) => {
-            // List objects in S3 bucket using XML API
-            const url = `https://${bucket}.s3.${region}.amazonaws.com/?list-type=2&prefix=${encodeURIComponent(prefix)}`;
-
-            https.get(url, (res) => {
-                let data = '';
-
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
-
-                res.on('end', () => {
-                    try {
-                        // Parse XML response to get list of files
-                        const keyMatches = data.match(/<Key>([^<]+)<\/Key>/g);
-
-                        if (!keyMatches || keyMatches.length === 0) {
-                            resolve(null);
-                            return;
-                        }
-
-                        // Extract keys and filter for MP3 files
-                        const musicKeys = keyMatches
-                            .map(match => match.replace(/<\/?Key>/g, ''))
-                            .filter(key => key.toLowerCase().endsWith('.mp3') && key !== prefix);
-
-                        if (musicKeys.length === 0) {
-                            resolve(null);
-                            return;
-                        }
-
-                        // Pick a random music file
-                        const randomKey = musicKeys[Math.floor(Math.random() * musicKeys.length)];
-                        const musicUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
-
-                        // Return music URL
-                        resolve({
-                            url: musicUrl,
-                            title: randomKey.split('/').pop().replace('.mp3', '')
-                        });
-                    } catch (e) {
-                        reject(e);
+    async fetchRandomGifFromS3(bucket, region, prefix) {
+        return this.fetchRandomFileFromS3(bucket, region, prefix, ['.gif'], (randomKey, fileUrl) => {
+            // Create a GIF data object similar to Giphy format
+            return {
+                id: randomKey,
+                title: randomKey.split('/').pop().replace('.gif', ''),
+                images: {
+                    original: {
+                        url: fileUrl
                     }
-                });
-            }).on('error', (err) => {
-                reject(err);
-            });
+                }
+            };
+        });
+    }
+
+    async fetchRandomMusicFromS3(bucket, region, prefix) {
+        return this.fetchRandomFileFromS3(bucket, region, prefix, ['.mp3'], (randomKey, fileUrl) => {
+            // Return music URL
+            return {
+                url: fileUrl,
+                title: randomKey.split('/').pop().replace('.mp3', '')
+            };
         });
     }
 
@@ -444,15 +345,6 @@ class GifViewProvider {
                     transform: scale(0.95);
                 }
 
-                .like-btn {
-                    top: 8px;
-                    right: 8px;
-                }
-
-                .like-btn.liked {
-                    color: #ff4757;
-                }
-
                 .skip-btn {
                     bottom: 8px;
                     right: 8px;
@@ -518,7 +410,6 @@ class GifViewProvider {
             <div class="container">
                 <div class="gif-container">
                     ${autoPlay ? `<div class="countdown-bar" id="countdownBar"></div>` : ''}
-                    <button class="button-base like-btn" id="likeBtn" onclick="toggleLike()" title="Like GIF">❤</button>
                     <button class="button-base skip-btn" onclick="getNewGif()" title="Next GIF">⏭</button>
                     <div class="music-controls">
                         <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play Music">▶</button>
@@ -542,7 +433,6 @@ class GifViewProvider {
                 const volumeControls = document.getElementById('volumeControls');
                 const gifImage = document.getElementById('gifImage');
                 const loadingIndicator = document.getElementById('loadingIndicator');
-                const likeBtn = document.getElementById('likeBtn');
                 const countdownBar = document.getElementById('countdownBar');
                 let isPlaying = false;
                 let currentGifId = null;
@@ -552,10 +442,6 @@ class GifViewProvider {
                     loadingIndicator.style.display = 'flex';
                     gifImage.style.display = 'none';
                     vscode.postMessage({ command: 'getNewGif' });
-                }
-
-                function toggleLike() {
-                    vscode.postMessage({ command: 'toggleLike' });
                 }
 
                 function playMusic() {
@@ -606,15 +492,6 @@ class GifViewProvider {
                         gifImage.style.display = 'block';
                         loadingIndicator.style.display = 'none';
 
-                        // Update like button
-                        if (message.isLiked) {
-                            likeBtn.classList.add('liked');
-                            likeBtn.title = 'Unlike GIF';
-                        } else {
-                            likeBtn.classList.remove('liked');
-                            likeBtn.title = 'Like GIF';
-                        }
-
                         // Restart countdown animation if autoplay is enabled
                         if (message.autoPlay && message.displayDuration) {
                             restartCountdown(message.displayDuration);
@@ -624,16 +501,6 @@ class GifViewProvider {
                     if (message.command === 'gifError') {
                         loadingIndicator.innerHTML = '<p>😕 ' + message.error + '</p>';
                         gifImage.style.display = 'none';
-                    }
-
-                    if (message.command === 'likeStatusUpdated') {
-                        if (message.isLiked) {
-                            likeBtn.classList.add('liked');
-                            likeBtn.title = 'Unlike GIF';
-                        } else {
-                            likeBtn.classList.remove('liked');
-                            likeBtn.title = 'Like GIF';
-                        }
                     }
 
                     if (message.command === 'musicLoaded') {
@@ -668,97 +535,6 @@ class GifViewProvider {
                     }
                 });
             </script>
-        </body>
-        </html>`;
-    }
-
-    getLoadingHTML() {
-        return `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {
-                    font-family: var(--vscode-font-family);
-                    background-color: var(--vscode-editor-background);
-                    color: var(--vscode-editor-foreground);
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    height: 100vh;
-                    margin: 0;
-                    padding: 20px;
-                }
-                .loading-container {
-                    text-align: center;
-                }
-                .loading-spinner {
-                    border: 3px solid rgba(255, 255, 255, 0.1);
-                    border-top: 3px solid var(--vscode-button-background);
-                    border-radius: 50%;
-                    width: 40px;
-                    height: 40px;
-                    animation: spin 1s linear infinite;
-                    margin: 0 auto 15px;
-                }
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-                p {
-                    font-size: 12px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="loading-container">
-                <div class="loading-spinner"></div>
-                <p>Loading GIF from S3... 🔥</p>
-            </div>
-        </body>
-        </html>`;
-    }
-
-    getErrorHTML(message) {
-        return `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {
-                    font-family: var(--vscode-font-family);
-                    background-color: var(--vscode-editor-background);
-                    color: var(--vscode-editor-foreground);
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    height: 100vh;
-                    text-align: center;
-                    padding: 20px;
-                }
-                .error-container {
-                    max-width: 300px;
-                }
-                .emoji {
-                    font-size: 36px;
-                    margin-bottom: 15px;
-                }
-                h2 {
-                    font-size: 16px;
-                }
-                p {
-                    font-size: 12px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="error-container">
-                <div class="emoji">😕</div>
-                <h2>Oops!</h2>
-                <p>${message}</p>
-            </div>
         </body>
         </html>`;
     }
