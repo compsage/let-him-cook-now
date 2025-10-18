@@ -18,9 +18,9 @@ Find "🔥🔥🔥" in the Activity Bar sidebar to open the GIF viewer.
 
 ### Controls
 
-- **⏭ Skip Button** (bottom right, shows on hover) - Next GIF
-- **▶/♪ Music Button** (bottom left, shows on hover) - Play/pause music
-- **+ / - Buttons** (bottom left, shows when playing) - Volume controls
+- **⏭ Skip Button** (top right, shows on hover) - Next GIF
+- **▶/♪ Music Button** (top left, shows on hover) - Play/pause music
+- **+ / - Buttons** (top left, shows when playing) - Volume controls
 
 ## Configuration
 
@@ -55,13 +55,24 @@ You can also:
 
 ## Release Notes
 
+### 0.6.8
+
+Latest release:
+- Moved controls to top of viewer (skip button top right, music controls top left)
+- Improved UI layout for better visibility
+- Updated marketplace category to "Other"
+
 ### 0.6.6
 
-- Random cooking GIF display from S3
+Initial stable release:
+- Random cooking GIF display
 - Background music player with volume controls
 - Auto-play mode that cycles through GIFs
 - Animated UI with hover controls
 - Configurable display duration
+- High-resolution transparent logo (512×512)
+- Marketplace metadata and keywords for discoverability
+- Contact information and support links
 
 ---
 
