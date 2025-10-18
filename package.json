@@ -2,14 +2,48 @@
   "name": "let-him-cook-now",
   "displayName": "Let Him Cook Now",
   "description": "Perfect for when you need that extra boost while coding",
-  "version": "0.6.1",
+  "version": "0.6.6",
   "publisher": "Compsage",
+  "author": {
+    "name": "Compsage",
+    "email": "jon@compsage.tech"
+  },
   "icon": "let-him-cook-logo.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/compsage/let-him-cook-now"
+  },
+  "homepage": "https://github.com/compsage/let-him-cook-now#readme",
+  "bugs": {
+    "url": "https://github.com/compsage/let-him-cook-now/issues"
+  },
+  "qna": "marketplace",
+  "keywords": [
+    "cooking",
+    "gif",
+    "motivation",
+    "inspiration",
+    "break",
+    "fun",
+    "entertainment",
+    "music",
+    "meme",
+    "productivity",
+    "let him cook",
+    "cooking gif",
+    "background music"
+  ],
+  "galleryBanner": {
+    "color": "#FF6B6B",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Fun"
   ],
   "activationEvents": [
     "onView:funnyCookingGifs.gifView"

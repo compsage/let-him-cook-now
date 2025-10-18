@@ -8,8 +8,7 @@ A VS Code extension that displays cooking GIFs with background music right in yo
 - Background music player with volume controls
 - Auto-play mode that cycles through GIFs automatically
 - Configurable display duration
-- Keyboard shortcuts for quick navigation
-- Beautiful, animated UI with hover controls
+- Animated UI with hover controls
 
 ## Usage
 
@@ -22,11 +21,6 @@ Find "🔥🔥🔥" in the Activity Bar sidebar to open the GIF viewer.
 - **⏭ Skip Button** (bottom right, shows on hover) - Next GIF
 - **▶/♪ Music Button** (bottom left, shows on hover) - Play/pause music
 - **+ / - Buttons** (bottom left, shows when playing) - Volume controls
-
-### Keyboard Shortcuts
-
-When the GIF viewer is open:
-- `Space` or `Enter` - Show next random GIF
 
 ## Configuration
 
@@ -48,14 +42,26 @@ Example settings:
 
 - VS Code 1.60.0 or higher
 
+## Support & Feedback
+
+Found a bug or have a feature request? Reach out to us!
+
+**Email**: jon@compsage.tech
+**Subject Line**: `Let Him Cook Now - Bug/Feature`
+
+You can also:
+- Report issues on [GitHub](https://github.com/compsage/let-him-cook-now/issues)
+- Ask questions on the [VS Code Marketplace](https://marketplace.visualstudio.com/)
+
 ## Release Notes
 
-### 0.6.0
+### 0.6.6
 
-Initial release:
-- Random cooking GIF display
-- Auto-play mode
-- Beautiful animated UI
+- Random cooking GIF display from S3
+- Background music player with volume controls
+- Auto-play mode that cycles through GIFs
+- Animated UI with hover controls
+- Configurable display duration
 
 ---
 
