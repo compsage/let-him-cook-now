@@ -4,13 +4,12 @@ const fs = require('fs');
 const path = require('path');
 
 let gifViewProvider = null;
-let musicPlayingContext = null;
 
 function activate(context) {
     console.log('🔥🔥🔥 You can cook now 🔥🔥🔥');
 
-    // Create context key for music playing state
-    musicPlayingContext = vscode.commands.executeCommand('setContext', 'funnyCookingGifs.musicPlaying', false);
+    // Initialize context key for music playing state
+    vscode.commands.executeCommand('setContext', 'funnyCookingGifs.musicPlaying', false);
 
     // Create and register the webview view provider
     gifViewProvider = new GifViewProvider(context.extensionUri);
@@ -28,36 +27,51 @@ function activate(context) {
     );
 
     // Command to get next GIF
-    let nextCommand = vscode.commands.registerCommand('funny-cooking-gifs.nextGif', async function () {
+    const ensureViewReady = () => {
+        if (gifViewProvider && gifViewProvider.hasActiveView()) {
+            return true;
+        }
+        vscode.window.showErrorMessage('Extension not ready. Try reopening the panel.');
+        return false;
+    };
+
+    // Command to get next GIF
+    const nextCommand = vscode.commands.registerCommand('funny-cooking-gifs.nextGif', async () => {
         if (gifViewProvider) {
             await gifViewProvider.updateGif();
         }
     });
 
-    // Command to toggle music (play)
-    let musicCommand = vscode.commands.registerCommand('funny-cooking-gifs.toggleMusic', async function () {
-        console.log('Play button clicked!');
-        if (gifViewProvider && gifViewProvider._view) {
-            console.log('Sending toggleMusic to webview');
-            gifViewProvider._view.webview.postMessage({ command: 'toggleMusic' });
-        } else {
-            console.error('gifViewProvider or view is null');
-            vscode.window.showErrorMessage('Extension not ready. Try reopening the panel.');
+    // Command to toggle music playback
+    const musicCommand = vscode.commands.registerCommand('funny-cooking-gifs.toggleMusic', () => {
+        if (!ensureViewReady()) {
+            return;
         }
+        gifViewProvider.postMessage({ command: 'toggleMusic' });
     });
 
     // Command to stop music
-    let stopMusicCommand = vscode.commands.registerCommand('funny-cooking-gifs.stopMusic', async function () {
-        console.log('Stop button clicked!');
-        if (gifViewProvider && gifViewProvider._view) {
-            console.log('Sending toggleMusic (stop) to webview');
-            gifViewProvider._view.webview.postMessage({ command: 'toggleMusic' });
+    const stopMusicCommand = vscode.commands.registerCommand('funny-cooking-gifs.stopMusic', () => {
+        if (!ensureViewReady()) {
+            return;
+        }
+        gifViewProvider.postMessage({ command: 'stopMusic' });
+    });
+
+    // Command to refresh GIF cache
+    const refreshGifListCommand = vscode.commands.registerCommand('funny-cooking-gifs.refreshGifList', async () => {
+        if (!ensureViewReady()) {
+            return;
+        }
+        try {
+            await gifViewProvider.refreshGifList();
+        } catch (error) {
+            console.error('Failed to refresh GIF list:', error);
+            vscode.window.showErrorMessage('Failed to refresh GIF list. Check logs for details.');
         }
     });
 
-    context.subscriptions.push(nextCommand);
-    context.subscriptions.push(musicCommand);
-    context.subscriptions.push(stopMusicCommand);
+    context.subscriptions.push(nextCommand, refreshGifListCommand, musicCommand, stopMusicCommand);
 }
 
 class GifViewProvider {
@@ -66,6 +80,11 @@ class GifViewProvider {
         this._view = null;
         this._autoRefreshInterval = null;
         this._currentGifData = null;
+        this._isFetchingGif = false;
+        this._gifCache = [];
+        this._gifCacheConfig = null;
+        this._gifListLoadPromise = null;
+        this._gifListLoadSignature = null;
     }
 
     resolveWebviewView(webviewView, context, _token) {
@@ -141,13 +160,25 @@ class GifViewProvider {
             }
         });
 
+        webviewView.onDidDispose(() => {
+            this.clearAutoRefresh();
+            this._view = null;
+        });
+
         // Initial load - set HTML once
         const config = vscode.workspace.getConfiguration('funnyCookingGifs');
         const displayDuration = config.get('displayDuration', 5);
         const autoPlay = config.get('autoPlay', true);
         const panelTitle = config.get('commandTitle', '🔥🔥🔥');
+        const s3Bucket = config.get('s3Bucket', 'let-them-cook-now');
+        const s3Region = config.get('s3Region', 'us-east-1');
+        const s3Prefix = config.get('s3Prefix', 'gifs/');
 
         this._view.webview.html = this.getWebviewContent(panelTitle, displayDuration, autoPlay);
+
+        this.loadGifList({ bucket: s3Bucket, region: s3Region, prefix: s3Prefix }).catch(error => {
+            console.error('Failed to preload GIF list:', error);
+        });
 
         // Then load first GIF
         this.updateGif();
@@ -155,7 +186,11 @@ class GifViewProvider {
     }
 
     async updateGif() {
-        if (!this._view) return;
+        if (!this._view || this._isFetchingGif) {
+            return;
+        }
+
+        this._isFetchingGif = true;
 
         const config = vscode.workspace.getConfiguration('funnyCookingGifs');
         const s3Bucket = config.get('s3Bucket', 'let-them-cook-now');
@@ -193,81 +228,119 @@ class GifViewProvider {
                 command: 'gifError',
                 error: 'Failed to load GIF from S3. Check bucket configuration and connection.'
             });
+        } finally {
+            this._isFetchingGif = false;
+        }
+    }
+
+    getGifConfig() {
+        const config = vscode.workspace.getConfiguration('funnyCookingGifs');
+        return {
+            bucket: config.get('s3Bucket', 'let-them-cook-now'),
+            region: config.get('s3Region', 'us-east-1'),
+            prefix: config.get('s3Prefix', 'gifs/')
+        };
+    }
+
+    async loadGifList({ bucket, region, prefix, force = false } = {}) {
+        if (!bucket || !region || !prefix) {
+            const defaults = this.getGifConfig();
+            bucket = bucket || defaults.bucket;
+            region = region || defaults.region;
+            prefix = prefix || defaults.prefix;
+        }
+
+        const signature = `${bucket}|${region}|${prefix}`;
+
+        if (signature !== this._gifCacheConfig) {
+            this._gifCache = [];
+        }
+
+        if (this._gifListLoadPromise && this._gifListLoadSignature !== signature) {
+            this._gifListLoadPromise = null;
+            this._gifListLoadSignature = null;
+        }
+
+        if (!force && this._gifCache.length > 0) {
+            return this._gifCache;
+        }
+
+        if (!force && this._gifListLoadPromise) {
+            return this._gifListLoadPromise;
+        }
+
+        const loader = (async () => {
+            const gifKeys = await this.collectS3Keys(bucket, region, prefix, ['.gif']);
+            this._gifCache = gifKeys;
+            this._gifCacheConfig = signature;
+            console.log(`gif list loaded: ${gifKeys.length}`);
+            return gifKeys;
+        })();
+
+        if (force) {
+            return loader;
+        }
+
+        this._gifListLoadSignature = signature;
+        this._gifListLoadPromise = loader;
+        try {
+            return await loader;
+        } finally {
+            if (this._gifListLoadPromise === loader) {
+                this._gifListLoadPromise = null;
+                this._gifListLoadSignature = null;
+            }
+        }
+    }
+
+    async refreshGifList() {
+        const { bucket, region, prefix } = this.getGifConfig();
+        await this.loadGifList({ bucket, region, prefix, force: true });
+        if (this._view) {
+            await this.updateGif();
         }
     }
 
     async fetchRandomFileFromS3(bucket, region, prefix, fileExtensions, formatResponse = null) {
-        return new Promise((resolve, reject) => {
-            // List objects in S3 bucket using XML API
-            const url = `https://${bucket}.s3.${region}.amazonaws.com/?list-type=2&prefix=${encodeURIComponent(prefix)}`;
+        const fileKeys = await this.collectS3Keys(bucket, region, prefix, fileExtensions);
 
-            https.get(url, (res) => {
-                let data = '';
+        if (!fileKeys || fileKeys.length === 0) {
+            return null;
+        }
 
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
+        const randomKey = fileKeys[Math.floor(Math.random() * fileKeys.length)];
+        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
 
-                res.on('end', () => {
-                    try {
-                        // Parse XML response to get list of files
-                        const keyMatches = data.match(/<Key>([^<]+)<\/Key>/g);
+        if (formatResponse) {
+            return formatResponse(randomKey, fileUrl);
+        }
 
-                        if (!keyMatches || keyMatches.length === 0) {
-                            resolve(null);
-                            return;
-                        }
-
-                        // Extract keys and filter for specified file extensions
-                        const fileKeys = keyMatches
-                            .map(match => match.replace(/<\/?Key>/g, ''))
-                            .filter(key => {
-                                const lowerKey = key.toLowerCase();
-                                return fileExtensions.some(ext => lowerKey.endsWith(ext.toLowerCase())) && key !== prefix;
-                            });
-
-                        if (fileKeys.length === 0) {
-                            resolve(null);
-                            return;
-                        }
-
-                        // Pick a random file
-                        const randomKey = fileKeys[Math.floor(Math.random() * fileKeys.length)];
-                        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
-
-                        // Use custom formatter if provided, otherwise return basic data
-                        if (formatResponse) {
-                            resolve(formatResponse(randomKey, fileUrl));
-                        } else {
-                            resolve({
-                                url: fileUrl,
-                                key: randomKey,
-                                title: randomKey.split('/').pop()
-                            });
-                        }
-                    } catch (e) {
-                        reject(e);
-                    }
-                });
-            }).on('error', (err) => {
-                reject(err);
-            });
-        });
+        return {
+            url: fileUrl,
+            key: randomKey,
+            title: randomKey.split('/').pop()
+        };
     }
 
     async fetchRandomGifFromS3(bucket, region, prefix) {
-        return this.fetchRandomFileFromS3(bucket, region, prefix, ['.gif'], (randomKey, fileUrl) => {
-            // Create a GIF data object similar to Giphy format
-            return {
-                id: randomKey,
-                title: randomKey.split('/').pop().replace('.gif', ''),
-                images: {
-                    original: {
-                        url: fileUrl
-                    }
+        const gifKeys = await this.loadGifList({ bucket, region, prefix });
+
+        if (!gifKeys || gifKeys.length === 0) {
+            return null;
+        }
+
+        const randomKey = gifKeys[Math.floor(Math.random() * gifKeys.length)];
+        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
+
+        return {
+            id: randomKey,
+            title: randomKey.split('/').pop().replace('.gif', ''),
+            images: {
+                original: {
+                    url: fileUrl
                 }
-            };
-        });
+            }
+        };
     }
 
     async fetchRandomMusicFromS3(bucket, region, prefix) {
@@ -277,6 +350,78 @@ class GifViewProvider {
                 url: fileUrl,
                 title: randomKey.split('/').pop().replace('.mp3', '')
             };
+        });
+    }
+
+    async collectS3Keys(bucket, region, prefix, fileExtensions) {
+        const collectedKeys = [];
+        let continuationToken = null;
+
+        do {
+            const { keys, isTruncated, nextContinuationToken } = await this.listS3Page(bucket, region, prefix, continuationToken);
+
+            const filteredKeys = keys.filter(key => {
+                const lowerKey = key.toLowerCase();
+                return fileExtensions.some(ext => lowerKey.endsWith(ext.toLowerCase())) && key !== prefix;
+            });
+
+            collectedKeys.push(...filteredKeys);
+
+            if (!isTruncated || !nextContinuationToken) {
+                break;
+            }
+
+            continuationToken = nextContinuationToken;
+        } while (continuationToken);
+
+        return collectedKeys;
+    }
+
+    listS3Page(bucket, region, prefix, continuationToken = null) {
+        return new Promise((resolve, reject) => {
+            const queryParts = [
+                'list-type=2',
+                `prefix=${encodeURIComponent(prefix)}`
+            ];
+
+            if (continuationToken) {
+                queryParts.push(`continuation-token=${encodeURIComponent(continuationToken)}`);
+            }
+
+            const url = `https://${bucket}.s3.${region}.amazonaws.com/?${queryParts.join('&')}`;
+
+            https.get(url, (res) => {
+                let data = '';
+
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                res.on('end', () => {
+                    if (res.statusCode !== 200) {
+                        const snippet = data ? ` Response: ${data.substring(0, 200)}...` : '';
+                        reject(new Error(`S3 request failed with status ${res.statusCode}.${snippet}`));
+                        return;
+                    }
+
+                    try {
+                        const keyMatches = data.match(/<Key>([^<]+)<\/Key>/g) || [];
+                        const keys = keyMatches.map(match => match.replace(/<\/?Key>/g, ''));
+                        const isTruncated = /<IsTruncated>true<\/IsTruncated>/.test(data);
+                        const nextTokenMatch = data.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+
+                        resolve({
+                            keys,
+                            isTruncated,
+                            nextContinuationToken: nextTokenMatch ? nextTokenMatch[1] : null
+                        });
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
+            }).on('error', (err) => {
+                reject(err);
+            });
         });
     }
 
@@ -315,6 +460,18 @@ class GifViewProvider {
         );
 
         return html;
+    }
+
+    postMessage(message) {
+        if (this._view) {
+            this._view.webview.postMessage(message);
+            return true;
+        }
+        return false;
+    }
+
+    hasActiveView() {
+        return !!this._view;
     }
 }
 

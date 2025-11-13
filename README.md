@@ -18,10 +18,11 @@ Find "🔥🔥🔥" in the Activity Bar sidebar to open the GIF viewer.
 
 ### Controls
 
-- **▶/⏹ Music Button** (top right of GIF) - Play/stop music
+- **▶/⏹ Music Button** (top right of GIF, shows on hover) - Play/stop cooking soundtrack
   - Hidden when stopped (shows on hover)
   - Always visible when playing with pulsating animation
-- **⏭ Skip Button** (title bar) - Next GIF
+- **Skip Button** (title bar, chevron icon) - Skip to next GIF
+- **Refresh Button** (title bar) - Reload GIF list
 
 ## Configuration
 

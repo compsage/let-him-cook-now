@@ -57,7 +57,7 @@
             position: absolute;
             top: 8px;
             right: 8px;
-            background: rgba(255, 107, 107, 0.9);
+            background: rgba(76, 175, 80, 0.9);
             color: white;
             border: none;
             width: 24px;
@@ -80,9 +80,10 @@
             opacity: 1;
         }
 
-        /* Always show when playing */
+        /* Always show when playing - red stop button */
         .music-btn.playing {
             opacity: 1;
+            background: rgba(244, 67, 54, 0.9);
             animation: pulse 2s ease-in-out infinite;
         }
 
@@ -92,15 +93,23 @@
                 transform: scale(1);
             }
             50% {
-                box-shadow: 0 6px 24px rgba(255, 107, 107, 0.8);
+                box-shadow: 0 6px 24px rgba(244, 67, 54, 0.8);
                 transform: scale(1.15);
             }
         }
 
         .music-btn:hover {
-            background: rgba(255, 107, 107, 1);
             transform: scale(1.1);
-            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+        }
+
+        .music-btn:not(.playing):hover {
+            background: rgba(76, 175, 80, 1);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+
+        .music-btn.playing:hover {
+            background: rgba(244, 67, 54, 1);
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
         }
 
         .music-btn:active {
@@ -130,9 +139,46 @@
         const countdownBar = document.getElementById('countdownBar');
         let isPlaying = false;
         let currentGifId = null;
+        let pendingMusicRequest = false;
+
+        const applyButtonUI = (playing) => {
+            if (playing) {
+                playBtn.textContent = '⏹';
+                playBtn.title = 'Stop cooking soundtrack';
+                playBtn.classList.add('playing');
+            } else {
+                playBtn.textContent = '▶';
+                playBtn.title = 'Play cooking soundtrack';
+                playBtn.classList.remove('playing');
+            }
+        };
+
+        const setPlayingState = (playing, notifyExtension = true) => {
+            const stateChanged = isPlaying !== playing;
+            isPlaying = playing;
+            applyButtonUI(playing);
+
+            if (notifyExtension && stateChanged) {
+                vscode.postMessage({ command: playing ? 'musicStarted' : 'musicStopped' });
+            }
+        };
+
+        const stopPlayback = (notifyExtension = true) => {
+            pendingMusicRequest = false;
+            if (audioPlayer.src) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+            }
+            setPlayingState(false, notifyExtension);
+        };
+
+        const requestRandomMusic = () => {
+            pendingMusicRequest = true;
+            vscode.postMessage({ command: 'getRandomMusic' });
+        };
 
         // Ensure button starts hidden (paused state)
-        playBtn.classList.remove('playing');
+        applyButtonUI(false);
 
         function getNewGif() {
             // Show loading state
@@ -142,19 +188,11 @@
         }
 
         function playMusic() {
-            console.log('playMusic called DIRECTLY from HTML button, isPlaying:', isPlaying);
-            if (isPlaying) {
-                // Pause music
-                console.log('Pausing music');
-                audioPlayer.pause();
-                isPlaying = false;
-                playBtn.textContent = '▶';
-                playBtn.title = 'Play cooking soundtrack';
-                playBtn.classList.remove('playing');
+            console.log('playMusic invoked, isPlaying:', isPlaying, 'pending request:', pendingMusicRequest);
+            if (isPlaying || pendingMusicRequest) {
+                stopPlayback();
             } else {
-                // Fetch a new random song when play is clicked
-                console.log('Requesting new music from direct user click');
-                vscode.postMessage({ command: 'getRandomMusic' });
+                requestRandomMusic();
             }
         }
 
@@ -195,6 +233,13 @@
                 console.log('Music loaded:', message.title);
                 console.log('Music URL:', message.musicUrl);
 
+                if (!pendingMusicRequest) {
+                    console.log('No pending music request. Ignoring musicLoaded response.');
+                    return;
+                }
+
+                pendingMusicRequest = false;
+
                 // Set the source and play
                 audioPlayer.src = message.musicUrl;
                 audioPlayer.volume = 0.25; // Start at 25% volume
@@ -202,35 +247,39 @@
                 // Play audio - user gesture context is preserved from button click
                 console.log('Playing audio (user gesture preserved from HTML button click)...');
                 audioPlayer.play().then(() => {
-                    isPlaying = true;
-                    playBtn.textContent = '⏹';
-                    playBtn.title = 'Stop cooking soundtrack';
-                    playBtn.classList.add('playing');
+                    setPlayingState(true);
                     console.log('✓ Audio started playing successfully!');
                 }).catch(err => {
                     console.error('✗ Error playing audio:', err.message);
                     console.error('Full error:', err);
-                    playBtn.textContent = '▶';
-                    playBtn.title = 'Play cooking soundtrack';
-                    playBtn.classList.remove('playing');
+                    stopPlayback();
                 });
 
                 // Play next random song when current one ends
                 audioPlayer.onended = () => {
                     console.log('Song ended, getting new music');
-                    isPlaying = false;
-                    playBtn.textContent = '▶';
-                    playBtn.title = 'Play cooking soundtrack';
-                    playBtn.classList.remove('playing');
+                    stopPlayback();
                     // Auto-play next song
-                    vscode.postMessage({ command: 'getRandomMusic' });
+                    requestRandomMusic();
+                };
+
+                audioPlayer.onerror = (error) => {
+                    console.error('Audio error:', error);
+                    stopPlayback();
                 };
             }
 
             if (message.command === 'musicError') {
                 console.error('Music error:', message.error);
-                isPlaying = false;
-                vscode.postMessage({ command: 'musicStopped' });
+                stopPlayback();
+            }
+
+            if (message.command === 'toggleMusic') {
+                playMusic();
+            }
+
+            if (message.command === 'stopMusic') {
+                stopPlayback();
             }
         });
 

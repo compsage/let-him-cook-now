@@ -64,15 +64,35 @@
       {
         "command": "funny-cooking-gifs.nextGif",
         "title": "Skip GIF",
-        "icon": "$(debug-step-over)"
+        "icon": "$(chevron-right)"
+      },
+      {
+        "command": "funny-cooking-gifs.refreshGifList",
+        "title": "Reload GIF List",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "funny-cooking-gifs.toggleMusic",
+        "title": "Play Cooking Music",
+        "icon": "$(play)"
+      },
+      {
+        "command": "funny-cooking-gifs.stopMusic",
+        "title": "Stop Cooking Music",
+        "icon": "$(primitive-square)"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "funny-cooking-gifs.refreshGifList",
+          "when": "view == funnyCookingGifs.gifView",
+          "group": "navigation@1"
+        },
+        {
           "command": "funny-cooking-gifs.nextGif",
           "when": "view == funnyCookingGifs.gifView",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ]
     },
