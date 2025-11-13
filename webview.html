@@ -60,11 +60,11 @@
             background: rgba(255, 107, 107, 0.9);
             color: white;
             border: none;
-            width: 36px;
-            height: 36px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -75,8 +75,26 @@
             opacity: 0;
         }
 
+        /* Show on hover when paused */
         .gif-container:hover .music-btn {
             opacity: 1;
+        }
+
+        /* Always show when playing */
+        .music-btn.playing {
+            opacity: 1;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 6px 24px rgba(255, 107, 107, 0.8);
+                transform: scale(1.15);
+            }
         }
 
         .music-btn:hover {
@@ -94,7 +112,7 @@
     <div class="container">
         <div class="gif-container">
             {{countdownBar}}
-            <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play Music">▶</button>
+            <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play cooking soundtrack">▶</button>
             <audio id="audioPlayer" style="display: none;"></audio>
             <img id="gifImage" src="" alt="Loading..." style="display: none;">
             <div id="loadingIndicator" style="display: flex; justify-content: center; align-items: center; min-height: 200px; color: var(--vscode-editor-foreground);">
@@ -113,6 +131,9 @@
         let isPlaying = false;
         let currentGifId = null;
 
+        // Ensure button starts hidden (paused state)
+        playBtn.classList.remove('playing');
+
         function getNewGif() {
             // Show loading state
             loadingIndicator.style.display = 'flex';
@@ -128,7 +149,8 @@
                 audioPlayer.pause();
                 isPlaying = false;
                 playBtn.textContent = '▶';
-                playBtn.title = 'Play Music';
+                playBtn.title = 'Play cooking soundtrack';
+                playBtn.classList.remove('playing');
             } else {
                 // Fetch a new random song when play is clicked
                 console.log('Requesting new music from direct user click');
@@ -175,20 +197,22 @@
 
                 // Set the source and play
                 audioPlayer.src = message.musicUrl;
-                audioPlayer.volume = 0.5; // Start at 50% volume
+                audioPlayer.volume = 0.25; // Start at 25% volume
 
                 // Play audio - user gesture context is preserved from button click
                 console.log('Playing audio (user gesture preserved from HTML button click)...');
                 audioPlayer.play().then(() => {
                     isPlaying = true;
-                    playBtn.textContent = '⏸';
-                    playBtn.title = 'Stop Music';
+                    playBtn.textContent = '⏹';
+                    playBtn.title = 'Stop cooking soundtrack';
+                    playBtn.classList.add('playing');
                     console.log('✓ Audio started playing successfully!');
                 }).catch(err => {
                     console.error('✗ Error playing audio:', err.message);
                     console.error('Full error:', err);
                     playBtn.textContent = '▶';
-                    playBtn.title = 'Play Music';
+                    playBtn.title = 'Play cooking soundtrack';
+                    playBtn.classList.remove('playing');
                 });
 
                 // Play next random song when current one ends
@@ -196,7 +220,8 @@
                     console.log('Song ended, getting new music');
                     isPlaying = false;
                     playBtn.textContent = '▶';
-                    playBtn.title = 'Play Music';
+                    playBtn.title = 'Play cooking soundtrack';
+                    playBtn.classList.remove('playing');
                     // Auto-play next song
                     vscode.postMessage({ command: 'getRandomMusic' });
                 };

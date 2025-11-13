@@ -18,7 +18,9 @@ Find "🔥🔥🔥" in the Activity Bar sidebar to open the GIF viewer.
 
 ### Controls
 
-- **▶/⏸ Music Button** (top right of GIF, shows on hover) - Play/pause music
+- **▶/⏹ Music Button** (top right of GIF) - Play/stop music
+  - Hidden when stopped (shows on hover)
+  - Always visible when playing with pulsating animation
 - **⏭ Skip Button** (title bar) - Next GIF
 
 ## Configuration
@@ -57,8 +59,11 @@ You can also:
 ### 0.6.9
 
 Latest release:
-- Play/pause button appears on hover at top-right of GIF (orange button)
+- Play/stop button at top-right of GIF (orange button)
+  - Hidden when stopped, shows on hover
+  - Always visible when playing with pulsating animation
 - Skip button in title bar
+- Lower default volume (25%)
 - Removed volume controls for simpler interface
 - Fixed audio playback user gesture issue
 
