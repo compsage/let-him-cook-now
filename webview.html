@@ -53,91 +53,40 @@
             to { width: 0%; }
         }
 
-        .button-base {
+        .music-btn {
             position: absolute;
-            background: rgba(0, 0, 0, 0.6);
-            color: white;
-            border: none;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            z-index: 20;
-            backdrop-filter: blur(4px);
-        }
-
-        .button-base:hover {
-            background: rgba(0, 0, 0, 0.8);
-            transform: scale(1.1);
-        }
-
-        .button-base:active {
-            transform: scale(0.95);
-        }
-
-        .skip-btn {
             top: 8px;
             right: 8px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .gif-container:hover .skip-btn {
-            opacity: 1;
-        }
-
-        .music-controls {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            display: flex;
-            gap: 8px;
-            z-index: 20;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .gif-container:hover .music-controls {
-            opacity: 1;
-        }
-
-        .music-btn {
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(255, 107, 107, 0.9);
             color: white;
             border: none;
-            width: 32px;
-            height: 32px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s;
+            transition: all 0.3s;
+            z-index: 20;
             backdrop-filter: blur(4px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+        }
+
+        .gif-container:hover .music-btn {
+            opacity: 1;
         }
 
         .music-btn:hover {
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(255, 107, 107, 1);
             transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
         }
 
         .music-btn:active {
             transform: scale(0.95);
-        }
-
-        .volume-controls {
-            display: none;
-            gap: 8px;
-        }
-
-        .volume-controls.visible {
-            display: flex;
         }
     </style>
 </head>
@@ -145,14 +94,7 @@
     <div class="container">
         <div class="gif-container">
             {{countdownBar}}
-            <button class="button-base skip-btn" onclick="getNewGif()" title="Next GIF">⏭</button>
-            <div class="music-controls">
-                <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play Music">▶</button>
-                <div class="volume-controls" id="volumeControls">
-                    <button class="music-btn" onclick="decreaseVolume()" title="Volume Down">-</button>
-                    <button class="music-btn" onclick="increaseVolume()" title="Volume Up">+</button>
-                </div>
-            </div>
+            <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play Music">▶</button>
             <audio id="audioPlayer" style="display: none;"></audio>
             <img id="gifImage" src="" alt="Loading..." style="display: none;">
             <div id="loadingIndicator" style="display: flex; justify-content: center; align-items: center; min-height: 200px; color: var(--vscode-editor-foreground);">
@@ -165,7 +107,6 @@
         const vscode = acquireVsCodeApi();
         const audioPlayer = document.getElementById('audioPlayer');
         const playBtn = document.getElementById('playBtn');
-        const volumeControls = document.getElementById('volumeControls');
         const gifImage = document.getElementById('gifImage');
         const loadingIndicator = document.getElementById('loadingIndicator');
         const countdownBar = document.getElementById('countdownBar');
@@ -180,28 +121,18 @@
         }
 
         function playMusic() {
+            console.log('playMusic called DIRECTLY from HTML button, isPlaying:', isPlaying);
             if (isPlaying) {
                 // Pause music
+                console.log('Pausing music');
                 audioPlayer.pause();
                 isPlaying = false;
                 playBtn.textContent = '▶';
                 playBtn.title = 'Play Music';
-                volumeControls.classList.remove('visible');
             } else {
-                // Always fetch a new random song when play is clicked
+                // Fetch a new random song when play is clicked
+                console.log('Requesting new music from direct user click');
                 vscode.postMessage({ command: 'getRandomMusic' });
-            }
-        }
-
-        function increaseVolume() {
-            if (audioPlayer.volume < 1.0) {
-                audioPlayer.volume = Math.min(1.0, audioPlayer.volume + 0.1);
-            }
-        }
-
-        function decreaseVolume() {
-            if (audioPlayer.volume > 0) {
-                audioPlayer.volume = Math.max(0, audioPlayer.volume - 0.1);
             }
         }
 
@@ -239,19 +170,34 @@
             }
 
             if (message.command === 'musicLoaded') {
+                console.log('Music loaded:', message.title);
+                console.log('Music URL:', message.musicUrl);
+
+                // Set the source and play
                 audioPlayer.src = message.musicUrl;
                 audioPlayer.volume = 0.5; // Start at 50% volume
+
+                // Play audio - user gesture context is preserved from button click
+                console.log('Playing audio (user gesture preserved from HTML button click)...');
                 audioPlayer.play().then(() => {
                     isPlaying = true;
-                    playBtn.textContent = '♪';
-                    playBtn.title = 'Playing: ' + message.title;
-                    volumeControls.classList.add('visible');
+                    playBtn.textContent = '⏸';
+                    playBtn.title = 'Stop Music';
+                    console.log('✓ Audio started playing successfully!');
                 }).catch(err => {
-                    console.error('Error playing audio:', err);
+                    console.error('✗ Error playing audio:', err.message);
+                    console.error('Full error:', err);
+                    playBtn.textContent = '▶';
+                    playBtn.title = 'Play Music';
                 });
 
                 // Play next random song when current one ends
                 audioPlayer.onended = () => {
+                    console.log('Song ended, getting new music');
+                    isPlaying = false;
+                    playBtn.textContent = '▶';
+                    playBtn.title = 'Play Music';
+                    // Auto-play next song
                     vscode.postMessage({ command: 'getRandomMusic' });
                 };
             }
@@ -259,6 +205,7 @@
             if (message.command === 'musicError') {
                 console.error('Music error:', message.error);
                 isPlaying = false;
+                vscode.postMessage({ command: 'musicStopped' });
             }
         });
 

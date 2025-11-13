@@ -4,12 +4,16 @@ const fs = require('fs');
 const path = require('path');
 
 let gifViewProvider = null;
+let musicPlayingContext = null;
 
 function activate(context) {
     console.log('🔥🔥🔥 You can cook now 🔥🔥🔥');
 
+    // Create context key for music playing state
+    musicPlayingContext = vscode.commands.executeCommand('setContext', 'funnyCookingGifs.musicPlaying', false);
+
     // Create and register the webview view provider
-    gifViewProvider = new GifViewProvider(context.extensionUri, context);
+    gifViewProvider = new GifViewProvider(context.extensionUri);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
@@ -30,13 +34,35 @@ function activate(context) {
         }
     });
 
+    // Command to toggle music (play)
+    let musicCommand = vscode.commands.registerCommand('funny-cooking-gifs.toggleMusic', async function () {
+        console.log('Play button clicked!');
+        if (gifViewProvider && gifViewProvider._view) {
+            console.log('Sending toggleMusic to webview');
+            gifViewProvider._view.webview.postMessage({ command: 'toggleMusic' });
+        } else {
+            console.error('gifViewProvider or view is null');
+            vscode.window.showErrorMessage('Extension not ready. Try reopening the panel.');
+        }
+    });
+
+    // Command to stop music
+    let stopMusicCommand = vscode.commands.registerCommand('funny-cooking-gifs.stopMusic', async function () {
+        console.log('Stop button clicked!');
+        if (gifViewProvider && gifViewProvider._view) {
+            console.log('Sending toggleMusic (stop) to webview');
+            gifViewProvider._view.webview.postMessage({ command: 'toggleMusic' });
+        }
+    });
+
     context.subscriptions.push(nextCommand);
+    context.subscriptions.push(musicCommand);
+    context.subscriptions.push(stopMusicCommand);
 }
 
 class GifViewProvider {
-    constructor(extensionUri, context) {
+    constructor(extensionUri) {
         this._extensionUri = extensionUri;
-        this._context = context;
         this._view = null;
         this._autoRefreshInterval = null;
         this._currentGifData = null;
@@ -62,6 +88,7 @@ class GifViewProvider {
                         break;
                     case 'getRandomMusic':
                         try {
+                            console.log('Fetching random music...');
                             const config = vscode.workspace.getConfiguration('funnyCookingGifs');
                             const s3Bucket = config.get('s3Bucket', 'let-them-cook-now');
                             const s3Region = config.get('s3Region', 'us-east-1');
@@ -70,12 +97,14 @@ class GifViewProvider {
                             const musicData = await this.fetchRandomMusicFromS3(s3Bucket, s3Region, s3MusicPrefix);
 
                             if (musicData) {
+                                console.log('Sending musicLoaded:', musicData.title);
                                 webviewView.webview.postMessage({
                                     command: 'musicLoaded',
                                     musicUrl: musicData.url,
                                     title: musicData.title
                                 });
                             } else {
+                                console.log('No music files found');
                                 webviewView.webview.postMessage({
                                     command: 'musicError',
                                     error: 'No music files found'
@@ -88,6 +117,16 @@ class GifViewProvider {
                                 error: 'Failed to load music'
                             });
                         }
+                        break;
+                    case 'musicStarted':
+                        // Update context when music actually starts playing
+                        console.log('Music started, setting context to true');
+                        vscode.commands.executeCommand('setContext', 'funnyCookingGifs.musicPlaying', true);
+                        break;
+                    case 'musicStopped':
+                        // Update context when music stops
+                        console.log('Music stopped, setting context to false');
+                        vscode.commands.executeCommand('setContext', 'funnyCookingGifs.musicPlaying', false);
                         break;
                 }
             }

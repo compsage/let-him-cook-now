@@ -2,7 +2,7 @@
   "name": "let-him-cook-now",
   "displayName": "Let Him Cook Now",
   "description": "Perfect for when you need that extra boost while coding",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "publisher": "Compsage",
   "author": {
     "name": "Compsage",
@@ -63,10 +63,19 @@
     "commands": [
       {
         "command": "funny-cooking-gifs.nextGif",
-        "title": "🔥🔥🔥",
-        "icon": "$(refresh)"
+        "title": "Skip GIF",
+        "icon": "$(debug-step-over)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "funny-cooking-gifs.nextGif",
+          "when": "view == funnyCookingGifs.gifView",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "🔥🔥🔥",
       "properties": {
