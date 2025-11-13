@@ -45,7 +45,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:funnyCookingGifs.gifView"
+    "onView:funnyCookingGifs.gifView",
+    "onCommand:funny-cooking-gifs.nextGif",
+    "onCommand:funny-cooking-gifs.refreshGifList",
+    "onCommand:funny-cooking-gifs.toggleMusic",
+    "onCommand:funny-cooking-gifs.stopMusic"
   ],
   "main": "./extension.js",
   "contributes": {
