@@ -57,9 +57,12 @@ You can also:
 
 ## Release Notes
 
+### 0.6.10
+Latest release:
+- Set Default gif display time to 90 seconds
+
 ### 0.6.9
 
-Latest release:
 - Play/stop button at top-right of GIF (orange button)
   - Hidden when stopped, shows on hover
   - Always visible when playing with pulsating animation

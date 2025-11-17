@@ -2,7 +2,7 @@
   "name": "let-him-cook-now",
   "displayName": "Let Him Cook Now",
   "description": "Perfect for when you need that extra boost while coding",
-  "version": "0.6.9",
+  "version": "0.6.10",
   "publisher": "Compsage",
   "author": {
     "name": "Compsage",
@@ -130,7 +130,7 @@
         },
         "funnyCookingGifs.displayDuration": {
           "type": "number",
-          "default": 5,
+          "default": 90,
           "description": "How long to display each GIF in seconds (when auto-play is enabled)"
         },
         "funnyCookingGifs.autoPlay": {
