@@ -167,7 +167,7 @@ class GifViewProvider {
 
         // Initial load - set HTML once
         const config = vscode.workspace.getConfiguration('funnyCookingGifs');
-        const displayDuration = config.get('displayDuration', 5);
+        const displayDuration = config.get('displayDuration', 90);
         const autoPlay = config.get('autoPlay', true);
         const panelTitle = config.get('commandTitle', '🔥🔥🔥');
         const s3Bucket = config.get('s3Bucket', 'let-them-cook-now');
@@ -182,7 +182,7 @@ class GifViewProvider {
 
         // Then load first GIF
         this.updateGif();
-        this.setupAutoRefresh();
+        this.setupAutoRefresh(true);
     }
 
     async updateGif() {
@@ -196,7 +196,7 @@ class GifViewProvider {
         const s3Bucket = config.get('s3Bucket', 'let-them-cook-now');
         const s3Region = config.get('s3Region', 'us-east-1');
         const s3Prefix = config.get('s3Prefix', 'gifs/');
-        const displayDuration = config.get('displayDuration', 5);
+        const displayDuration = config.get('displayDuration', 90);
         const autoPlay = config.get('autoPlay', true);
 
         try {
@@ -425,14 +425,14 @@ class GifViewProvider {
         });
     }
 
-    setupAutoRefresh() {
+    setupAutoRefresh(forceStart = false) {
         this.clearAutoRefresh();
 
         const config = vscode.workspace.getConfiguration('funnyCookingGifs');
-        const displayDuration = config.get('displayDuration', 5);
+        const displayDuration = config.get('displayDuration', 90);
         const autoPlay = config.get('autoPlay', true);
 
-        if (autoPlay && this._view && this._view.visible) {
+        if (autoPlay && this._view && (forceStart || this._view.visible)) {
             const intervalMs = displayDuration * 1000;
             this._autoRefreshInterval = setInterval(() => {
                 this.updateGif();

@@ -28,7 +28,7 @@ Find "🔥🔥🔥" in the Activity Bar sidebar to open the GIF viewer.
 
 Open VS Code Settings and search for "funnyCookingGifs" to customize:
 
-- **Display Duration** - How long to show each GIF in seconds (default: 5)
+- **Display Duration** - How long to show each GIF in seconds (default: 90)
 - **Auto Play** - Automatically cycle through GIFs (default: true)
 
 Example settings:
@@ -57,9 +57,14 @@ You can also:
 
 ## Release Notes
 
-### 0.6.10
+### 0.6.11
 Latest release:
-- Set Default gif display time to 90 seconds
+- GIFs now resize to fit panel (always fully visible, no cropping)
+- Fixed auto-play timer not starting on some VS Code versions
+- GIF anchored to top of panel
+
+### 0.6.10
+- Set default GIF display time to 90 seconds
 
 ### 0.6.9
 
