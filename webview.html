@@ -127,6 +127,10 @@
         <div class="gif-container">
             {{countdownBar}}
             <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play cooking soundtrack">▶</button>
+            <button class="like-btn" id="likeBtn" onclick="toggleLike()" title="Like this GIF">
+                <span id="likeIcon">♡</span>
+                <span id="likeCount">0</span>
+            </button>
             <audio id="audioPlayer" style="display: none;"></audio>
             <img id="gifImage" src="" alt="Loading..." style="display: none;">
             <div id="loadingIndicator" style="display: flex; justify-content: center; align-items: center; min-height: 200px; color: var(--vscode-editor-foreground);">
