@@ -77,10 +77,8 @@ function activate(context) {
 class GifViewProvider {
     constructor(context) {
         this._extensionUri = context.extensionUri;
-        this._context = context;
         this._view = null;
         this._autoRefreshInterval = null;
-        this._currentGifData = null;
         this._isFetchingGif = false;
         this._gifCache = [];
         this._gifCacheConfig = null;
@@ -88,7 +86,14 @@ class GifViewProvider {
         this._gifListLoadSignature = null;
         this._shuffledGifList = [];
         this._gifIndex = 0;
+        this._musicCache = [];
+        this._musicCacheConfig = null;
+        this._musicListLoadPromise = null;
+        this._musicListLoadSignature = null;
         this._likedGifs = new Set();
+        this._likesSaveTimer = null;
+        this._likesDirty = false;
+        this._likesSavePromise = Promise.resolve();
         this._likesFilePath = path.join(
             context.globalStorageUri.fsPath,
             `${vscode.env.machineId}_likes.txt`
@@ -98,32 +103,58 @@ class GifViewProvider {
     async _loadLikes() {
         try {
             const dir = path.dirname(this._likesFilePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            if (fs.existsSync(this._likesFilePath)) {
-                const data = fs.readFileSync(this._likesFilePath, 'utf8');
-                this._likedGifs = new Set(
-                    data.split('\n').map(line => line.trim()).filter(Boolean)
-                );
-            } else {
-                this._likedGifs = new Set();
-            }
+            await fs.promises.mkdir(dir, { recursive: true });
+            const data = await fs.promises.readFile(this._likesFilePath, 'utf8');
+            this._likedGifs = new Set(
+                data.split('\n').map(line => line.trim()).filter(Boolean)
+            );
         } catch (error) {
-            console.error('Error loading likes:', error);
-            this._likedGifs = new Set();
+            if (error && error.code !== 'ENOENT') {
+                console.error('Error loading likes:', error);
+            }
+            this._likedGifs = this._likedGifs || new Set();
         }
     }
 
-    async _saveLikes() {
-        try {
-            const dir = path.dirname(this._likesFilePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
+    async _saveLikesImmediate() {
+        const dir = path.dirname(this._likesFilePath);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(this._likesFilePath, [...this._likedGifs].join('\n'), 'utf8');
+    }
+
+    _scheduleSaveLikes() {
+        this._likesDirty = true;
+        if (this._likesSaveTimer) {
+            return;
+        }
+        this._likesSaveTimer = setTimeout(() => {
+            this._likesSaveTimer = null;
+            if (!this._likesDirty) {
+                return;
             }
-            fs.writeFileSync(this._likesFilePath, [...this._likedGifs].join('\n'), 'utf8');
-        } catch (error) {
-            console.error('Error saving likes:', error);
+            this._likesDirty = false;
+            this._likesSavePromise = this._likesSavePromise
+                .then(() => this._saveLikesImmediate())
+                .catch(error => {
+                    console.error('Error saving likes:', error);
+                });
+        }, 250);
+    }
+
+    async flushLikes() {
+        if (this._likesSaveTimer) {
+            clearTimeout(this._likesSaveTimer);
+            this._likesSaveTimer = null;
+        }
+        if (this._likesDirty) {
+            this._likesDirty = false;
+            try {
+                await this._saveLikesImmediate();
+            } catch (error) {
+                console.error('Error saving likes:', error);
+            }
+        } else {
+            await this._likesSavePromise.catch(() => {});
         }
     }
 
@@ -133,7 +164,7 @@ class GifViewProvider {
         } else {
             this._likedGifs.add(gifId);
         }
-        await this._saveLikes();
+        this._scheduleSaveLikes();
         return this._likedGifs.has(gifId);
     }
 
@@ -164,9 +195,6 @@ class GifViewProvider {
                 switch (message.command) {
                     case 'getNewGif':
                         await this.updateGif();
-                        break;
-                    case 'openGiphy':
-                        vscode.env.openExternal(vscode.Uri.parse(message.url));
                         break;
                     case 'getRandomMusic':
                         try {
@@ -229,6 +257,9 @@ class GifViewProvider {
 
         webviewView.onDidDispose(() => {
             this.clearAutoRefresh();
+            this.flushLikes().catch(error => {
+                console.error('Failed to flush likes:', error);
+            });
             this._view = null;
         });
 
@@ -276,8 +307,6 @@ class GifViewProvider {
             const gifData = gifKey ? this.fetchGifFromS3(s3Bucket, s3Region, gifKey) : null;
 
             if (gifData) {
-                this._currentGifData = gifData;
-
                 // Send message to update GIF instead of replacing HTML
                 this._view.webview.postMessage({
                     command: 'updateGif',
@@ -289,7 +318,6 @@ class GifViewProvider {
                     isLiked: this.isLiked(gifData.id)
                 });
             } else {
-                this._currentGifData = null;
                 this._view.webview.postMessage({
                     command: 'gifError',
                     error: 'No GIFs found in S3 bucket.'
@@ -312,6 +340,15 @@ class GifViewProvider {
             bucket: config.get('s3Bucket', 'let-them-cook-now'),
             region: config.get('s3Region', 'us-east-1'),
             prefix: config.get('s3Prefix', 'gifs/')
+        };
+    }
+
+    getMusicConfig() {
+        const config = vscode.workspace.getConfiguration('funnyCookingGifs');
+        return {
+            bucket: config.get('s3Bucket', 'let-them-cook-now'),
+            region: config.get('s3Region', 'us-east-1'),
+            prefix: config.get('s3MusicPrefix', 'songs/')
         };
     }
 
@@ -378,25 +415,55 @@ class GifViewProvider {
         }
     }
 
-    async fetchRandomFileFromS3(bucket, region, prefix, fileExtensions, formatResponse = null) {
-        const fileKeys = await this.collectS3Keys(bucket, region, prefix, fileExtensions);
-
-        if (!fileKeys || fileKeys.length === 0) {
-            return null;
+    async loadMusicList({ bucket, region, prefix, force = false } = {}) {
+        if (!bucket || !region || !prefix) {
+            const defaults = this.getMusicConfig();
+            bucket = bucket || defaults.bucket;
+            region = region || defaults.region;
+            prefix = prefix || defaults.prefix;
         }
 
-        const randomKey = fileKeys[Math.floor(Math.random() * fileKeys.length)];
-        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
+        const signature = `${bucket}|${region}|${prefix}`;
 
-        if (formatResponse) {
-            return formatResponse(randomKey, fileUrl);
+        if (signature !== this._musicCacheConfig) {
+            this._musicCache = [];
         }
 
-        return {
-            url: fileUrl,
-            key: randomKey,
-            title: randomKey.split('/').pop()
-        };
+        if (this._musicListLoadPromise && this._musicListLoadSignature !== signature) {
+            this._musicListLoadPromise = null;
+            this._musicListLoadSignature = null;
+        }
+
+        if (!force && this._musicCache.length > 0) {
+            return this._musicCache;
+        }
+
+        if (!force && this._musicListLoadPromise) {
+            return this._musicListLoadPromise;
+        }
+
+        const loader = (async () => {
+            const musicKeys = await this.collectS3Keys(bucket, region, prefix, ['.mp3']);
+            this._musicCache = musicKeys;
+            this._musicCacheConfig = signature;
+            console.log(`music list loaded: ${musicKeys.length}`);
+            return musicKeys;
+        })();
+
+        if (force) {
+            return loader;
+        }
+
+        this._musicListLoadSignature = signature;
+        this._musicListLoadPromise = loader;
+        try {
+            return await loader;
+        } finally {
+            if (this._musicListLoadPromise === loader) {
+                this._musicListLoadPromise = null;
+                this._musicListLoadSignature = null;
+            }
+        }
     }
 
     getNextGifKey() {
@@ -430,13 +497,16 @@ class GifViewProvider {
     }
 
     async fetchRandomMusicFromS3(bucket, region, prefix) {
-        return this.fetchRandomFileFromS3(bucket, region, prefix, ['.mp3'], (randomKey, fileUrl) => {
-            // Return music URL
-            return {
-                url: fileUrl,
-                title: randomKey.split('/').pop().replace('.mp3', '')
-            };
-        });
+        const musicKeys = await this.loadMusicList({ bucket, region, prefix });
+        if (!musicKeys || musicKeys.length === 0) {
+            return null;
+        }
+        const randomKey = musicKeys[Math.floor(Math.random() * musicKeys.length)];
+        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
+        return {
+            url: fileUrl,
+            title: randomKey.split('/').pop().replace('.mp3', '')
+        };
     }
 
     async collectS3Keys(bucket, region, prefix, fileExtensions) {
@@ -477,13 +547,14 @@ class GifViewProvider {
             const url = `https://${bucket}.s3.${region}.amazonaws.com/?${queryParts.join('&')}`;
 
             https.get(url, (res) => {
-                let data = '';
+                const chunks = [];
 
                 res.on('data', (chunk) => {
-                    data += chunk;
+                    chunks.push(chunk);
                 });
 
                 res.on('end', () => {
+                    const data = Buffer.concat(chunks).toString('utf8');
                     if (res.statusCode !== 200) {
                         const snippet = data ? ` Response: ${data.substring(0, 200)}...` : '';
                         reject(new Error(`S3 request failed with status ${res.statusCode}.${snippet}`));
@@ -564,6 +635,9 @@ class GifViewProvider {
 function deactivate() {
     if (gifViewProvider) {
         gifViewProvider.clearAutoRefresh();
+        gifViewProvider.flushLikes().catch(error => {
+            console.error('Failed to flush likes during deactivate:', error);
+        });
     }
 }
 
