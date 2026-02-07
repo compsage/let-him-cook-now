@@ -12,7 +12,7 @@ function activate(context) {
     vscode.commands.executeCommand('setContext', 'funnyCookingGifs.musicPlaying', false);
 
     // Create and register the webview view provider
-    gifViewProvider = new GifViewProvider(context.extensionUri);
+    gifViewProvider = new GifViewProvider(context);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
@@ -75,8 +75,9 @@ function activate(context) {
 }
 
 class GifViewProvider {
-    constructor(extensionUri) {
-        this._extensionUri = extensionUri;
+    constructor(context) {
+        this._extensionUri = context.extensionUri;
+        this._context = context;
         this._view = null;
         this._autoRefreshInterval = null;
         this._currentGifData = null;
@@ -87,6 +88,57 @@ class GifViewProvider {
         this._gifListLoadSignature = null;
         this._shuffledGifList = [];
         this._gifIndex = 0;
+        this._likedGifs = new Set();
+        this._likesFilePath = path.join(
+            context.globalStorageUri.fsPath,
+            `${vscode.env.machineId}_likes.txt`
+        );
+    }
+
+    async _loadLikes() {
+        try {
+            const dir = path.dirname(this._likesFilePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            if (fs.existsSync(this._likesFilePath)) {
+                const data = fs.readFileSync(this._likesFilePath, 'utf8');
+                this._likedGifs = new Set(
+                    data.split('\n').map(line => line.trim()).filter(Boolean)
+                );
+            } else {
+                this._likedGifs = new Set();
+            }
+        } catch (error) {
+            console.error('Error loading likes:', error);
+            this._likedGifs = new Set();
+        }
+    }
+
+    async _saveLikes() {
+        try {
+            const dir = path.dirname(this._likesFilePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.writeFileSync(this._likesFilePath, [...this._likedGifs].join('\n'), 'utf8');
+        } catch (error) {
+            console.error('Error saving likes:', error);
+        }
+    }
+
+    async toggleLike(gifId) {
+        if (this._likedGifs.has(gifId)) {
+            this._likedGifs.delete(gifId);
+        } else {
+            this._likedGifs.add(gifId);
+        }
+        await this._saveLikes();
+        return this._likedGifs.has(gifId);
+    }
+
+    isLiked(gifId) {
+        return this._likedGifs.has(gifId);
     }
 
     shuffleArray(array) {
@@ -148,6 +200,10 @@ class GifViewProvider {
                             });
                         }
                         break;
+                    case 'toggleLike':
+                        const liked = await this.toggleLike(message.gifId);
+                        this._view.webview.postMessage({ command: 'likeUpdated', gifId: message.gifId, isLiked: liked });
+                        break;
                     case 'musicStarted':
                         // Update context when music actually starts playing
                         console.log('Music started, setting context to true');
@@ -187,6 +243,10 @@ class GifViewProvider {
 
         this._view.webview.html = this.getWebviewContent(panelTitle, displayDuration, autoPlay);
 
+        this._loadLikes().catch(error => {
+            console.error('Failed to load likes:', error);
+        });
+
         this.loadGifList({ bucket: s3Bucket, region: s3Region, prefix: s3Prefix }).catch(error => {
             console.error('Failed to preload GIF list:', error);
         });
@@ -225,7 +285,8 @@ class GifViewProvider {
                     gifId: gifData.id,
                     title: gifData.title || 'Cooking GIF',
                     displayDuration: displayDuration,
-                    autoPlay: autoPlay
+                    autoPlay: autoPlay,
+                    isLiked: this.isLiked(gifData.id)
                 });
             } else {
                 this._currentGifData = null;

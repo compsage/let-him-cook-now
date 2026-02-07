@@ -57,8 +57,14 @@ You can also:
 
 ## Release Notes
 
-### 0.6.11
+### 0.6.12
 Latest release:
+- GIF likes/favorites — heart button appears on hover; click to like. Likes persist per machine across sessions. (all data local)
+- Optimized GIF playback — GIF list is pre-loaded and shuffled (Fisher-Yates), then played sequentially. No more immediate repeats; reshuffles when the list is exhausted.
+- UI polish — hover effects on the like button, improved GIF container sizing, and new layout wrapper.
+- Packaging cleanup — added `.vscodeignore` to exclude dev files from the published extension.
+
+### 0.6.11
 - GIFs now resize to fit panel (always fully visible, no cropping)
 - Fixed auto-play timer not starting on some VS Code versions
 - GIF anchored to top of panel

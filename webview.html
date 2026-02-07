@@ -35,9 +35,15 @@
             align-items: flex-start;
         }
 
-        .gif-container img {
+        .gif-wrapper {
+            position: relative;
             max-width: 100%;
             max-height: 100%;
+        }
+
+        .gif-wrapper img {
+            max-width: 100%;
+            max-height: 100vh;
             object-fit: contain;
             display: block;
         }
@@ -120,6 +126,40 @@
         .music-btn:active {
             transform: scale(0.95);
         }
+
+        .like-btn {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: none;
+            color: #ccc;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            font-size: 22px;
+            transition: all 0.3s;
+            z-index: 20;
+            opacity: 0;
+            line-height: 1;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+        }
+
+        .gif-wrapper:hover .like-btn {
+            opacity: 1;
+        }
+
+        .like-btn.liked {
+            opacity: 1;
+            color: #e74c3c;
+        }
+
+        .like-btn:hover {
+            transform: scale(1.2);
+        }
+
+        .like-btn:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
@@ -128,7 +168,10 @@
             {{countdownBar}}
             <button class="music-btn" id="playBtn" onclick="playMusic()" title="Play cooking soundtrack">▶</button>
             <audio id="audioPlayer" style="display: none;"></audio>
-            <img id="gifImage" src="" alt="Loading..." style="display: none;">
+            <div class="gif-wrapper" id="gifWrapper" style="display: none;">
+                <img id="gifImage" src="" alt="Loading...">
+                <button class="like-btn" id="likeBtn" onclick="toggleLike()" title="Like this GIF">♥</button>
+            </div>
             <div id="loadingIndicator" style="display: flex; justify-content: center; align-items: center; min-height: 200px; color: var(--vscode-editor-foreground);">
                 <p>Loading GIF... 🔥</p>
             </div>
@@ -139,7 +182,9 @@
         const vscode = acquireVsCodeApi();
         const audioPlayer = document.getElementById('audioPlayer');
         const playBtn = document.getElementById('playBtn');
+        const likeBtn = document.getElementById('likeBtn');
         const gifImage = document.getElementById('gifImage');
+        const gifWrapper = document.getElementById('gifWrapper');
         const loadingIndicator = document.getElementById('loadingIndicator');
         const countdownBar = document.getElementById('countdownBar');
         let isPlaying = false;
@@ -188,7 +233,7 @@
         function getNewGif() {
             // Show loading state
             loadingIndicator.style.display = 'flex';
-            gifImage.style.display = 'none';
+            gifWrapper.style.display = 'none';
             vscode.postMessage({ command: 'getNewGif' });
         }
 
@@ -198,6 +243,22 @@
                 stopPlayback();
             } else {
                 requestRandomMusic();
+            }
+        }
+
+        function updateLikeUI(isLiked) {
+            if (isLiked) {
+                likeBtn.classList.add('liked');
+                likeBtn.title = 'Unlike this GIF';
+            } else {
+                likeBtn.classList.remove('liked');
+                likeBtn.title = 'Like this GIF';
+            }
+        }
+
+        function toggleLike() {
+            if (currentGifId) {
+                vscode.postMessage({ command: 'toggleLike', gifId: currentGifId });
             }
         }
 
@@ -220,8 +281,9 @@
                 currentGifId = message.gifId;
                 gifImage.src = message.gifUrl;
                 gifImage.alt = message.title;
-                gifImage.style.display = 'block';
+                gifWrapper.style.display = 'block';
                 loadingIndicator.style.display = 'none';
+                updateLikeUI(message.isLiked);
 
                 // Restart countdown animation if autoplay is enabled
                 if (message.autoPlay && message.displayDuration) {
@@ -229,9 +291,15 @@
                 }
             }
 
+            if (message.command === 'likeUpdated') {
+                if (message.gifId === currentGifId) {
+                    updateLikeUI(message.isLiked);
+                }
+            }
+
             if (message.command === 'gifError') {
                 loadingIndicator.innerHTML = '<p>😕 ' + message.error + '</p>';
-                gifImage.style.display = 'none';
+                gifWrapper.style.display = 'none';
             }
 
             if (message.command === 'musicLoaded') {
