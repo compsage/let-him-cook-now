@@ -85,6 +85,17 @@ class GifViewProvider {
         this._gifCacheConfig = null;
         this._gifListLoadPromise = null;
         this._gifListLoadSignature = null;
+        this._shuffledGifList = [];
+        this._gifIndex = 0;
+    }
+
+    shuffleArray(array) {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
     }
 
     resolveWebviewView(webviewView, context, _token) {
@@ -200,8 +211,9 @@ class GifViewProvider {
         const autoPlay = config.get('autoPlay', true);
 
         try {
-            // Fetch a random GIF from S3
-            const gifData = await this.fetchRandomGifFromS3(s3Bucket, s3Region, s3Prefix);
+            await this.loadGifList({ bucket: s3Bucket, region: s3Region, prefix: s3Prefix });
+            const gifKey = this.getNextGifKey();
+            const gifData = gifKey ? this.fetchGifFromS3(s3Bucket, s3Region, gifKey) : null;
 
             if (gifData) {
                 this._currentGifData = gifData;
@@ -254,6 +266,8 @@ class GifViewProvider {
 
         if (signature !== this._gifCacheConfig) {
             this._gifCache = [];
+            this._shuffledGifList = [];
+            this._gifIndex = 0;
         }
 
         if (this._gifListLoadPromise && this._gifListLoadSignature !== signature) {
@@ -273,6 +287,8 @@ class GifViewProvider {
             const gifKeys = await this.collectS3Keys(bucket, region, prefix, ['.gif']);
             this._gifCache = gifKeys;
             this._gifCacheConfig = signature;
+            this._shuffledGifList = this.shuffleArray(gifKeys);
+            this._gifIndex = 0;
             console.log(`gif list loaded: ${gifKeys.length}`);
             return gifKeys;
         })();
@@ -322,19 +338,28 @@ class GifViewProvider {
         };
     }
 
-    async fetchRandomGifFromS3(bucket, region, prefix) {
-        const gifKeys = await this.loadGifList({ bucket, region, prefix });
-
-        if (!gifKeys || gifKeys.length === 0) {
+    getNextGifKey() {
+        if (!this._shuffledGifList || this._shuffledGifList.length === 0) {
             return null;
         }
 
-        const randomKey = gifKeys[Math.floor(Math.random() * gifKeys.length)];
-        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(randomKey).replace(/%2F/g, '/')}`;
+        const gifKey = this._shuffledGifList[this._gifIndex];
+        this._gifIndex++;
+
+        if (this._gifIndex >= this._shuffledGifList.length) {
+            this._shuffledGifList = this.shuffleArray(this._gifCache);
+            this._gifIndex = 0;
+        }
+
+        return gifKey;
+    }
+
+    fetchGifFromS3(bucket, region, gifKey) {
+        const fileUrl = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURIComponent(gifKey).replace(/%2F/g, '/')}`;
 
         return {
-            id: randomKey,
-            title: randomKey.split('/').pop().replace('.gif', ''),
+            id: gifKey,
+            title: gifKey.split('/').pop().replace('.gif', ''),
             images: {
                 original: {
                     url: fileUrl
